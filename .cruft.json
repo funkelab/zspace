@@ -1,0 +1,18 @@
+{
+  "template": "git@github.com:ai-mbl/example-project.git",
+  "commit": "211e16768a751b5935f2915c01d57f871bae904a",
+  "checkout": null,
+  "context": {
+    "cookiecutter": {
+      "full_name": "Gabriela Barros",
+      "email": "barrosg@hhmi.org",
+      "project_name": "zspace",
+      "project_slug": "zspace",
+      "project_short_description": "Toy Model for Creating QuAC in a latent space.",
+      "default_python": "3.13",
+      "_template": "git@github.com:ai-mbl/example-project.git",
+      "_commit": "211e16768a751b5935f2915c01d57f871bae904a"
+    }
+  },
+  "directory": null
+}
