@@ -3,88 +3,103 @@ import zspace
 import torch
 import numpy
 import random
+from torch.utils.data import Dataset
 
 # %%
-def generate_xa(y):
-    """
-    Generate the image xa from the binary y.
-    """
-    num_components = 3   # RGB
-    height = 32
-    width = 32
-    xa = torch.zeros(num_components, height, width)
-    dims = xa.shape
+class ToyModel(Dataset):
+    def __init__(self, y):
+        self.y = y
+        self.xs = [
+            self.generate_xa(),   # xa, a 32 x 32 RGB image
+            self.generate_xb(),          # xb, a probability distribution of 10 classifications
+            self.generate_xc(),      # xc, a time series of 10 walks and 50 timepoints
+            ]
+    
+    def __len__(self):
+        return len(self.xs)
 
-    for i in range(dims[0]):
-        for j in range(dims[1]):
-            for k in range(dims[2]):
-                if i == 0:   # R sampled from irrelevant normal distribution
-                    xa[i,j,k] = torch.normal(mean=0, std=1, size=(1,)).item()
-                elif i == 1:   # G sampled from relevant, low variance normal distribution
-                    xa[i,j,k] = torch.normal(mean=y, std=0.1, size=(1,)).item()
-                else:   # B sampled from relevant, high variance vals
-                    xa[i,j,k] = torch.normal(mean=y, std=10, size=(1,)).item()
+    def __getitem__(self, idx):
+        return self.xs[idx]
+    
+    def generate_xa(self):
+        """
+        Generate the image xa from the binary y.
+        """
+        num_components = 3   # RGB
+        height = 32
+        width = 32
+        xa = torch.zeros(num_components, height, width)
+        dims = xa.shape
 
-    return xa
+        # color xa by sampling from different normal distributions
+        for i in range(dims[0]):
+            for j in range(dims[1]):
+                for k in range(dims[2]):
+                    # sample R vals from irrelevant (independent from y) normal distribution
+                    if i == 0:
+                        xa[i,j,k] = torch.normal(mean=0, std=1, size=(1,)).item()
+                    # sample G vals from relevant (dependent on y), low variance normal distribution
+                    elif i == 1:
+                        xa[i,j,k] = torch.normal(mean=self.y, std=0.1, size=(1,)).item()
+                    # sample B vals from relevant, high variance normal distribution
+                    else:
+                        xa[i,j,k] = torch.normal(mean=self.y, std=10, size=(1,)).item()
 
-# %%
-def generate_xb(y):
-    """
-    Generate the bar chart probabilities xb from the binary y.
-    """
-    num_classes = 10
-    xb = torch.zeros(num_classes)
+        return xa      
 
-    for i in range(xb.size(dim=0)):
-        xb[i] = random.random()   # assign random val to each class
+    def generate_xb(self):
+        """
+        Generate the bar chart probabilities xb from the binary y.
+        """
+        num_classes = 10
+        xb = torch.zeros(num_classes)
 
-    xb = xb.softmax(dim=0)   # convert vals to probability distribution
+        # assign random val to each classification
+        for i in range(xb.size(dim=0)):
+            xb[i] = random.random()
 
-    # sort in ascending order if y = 0, descending order if y = 1
-    dec = False
-    if y == 1:
-        dec = True
+        # convert vals to probability distribution
+        xb = xb.softmax(dim=0)
 
-    xb = torch.sort(xb, descending=dec)[0]
+        # sort in ascending order if y = 0, descending order if y = 1
+        dec = False
+        if self.y == 1:
+            dec = True
 
-    return xb
+        xb = torch.sort(xb, descending=dec)[0]
 
-# %%
-def generate_xc(y):
-    """
-    Generate the time series xc from the binary c.
-    """
-    num_walks = 10
-    num_timepoints = 50
-    xc = torch.zeros(num_walks, num_timepoints)
-    dims = xc.shape
+        return xb
 
-    for i in range(dims[0]):
-         xc[i,0] = random.random()
+    def generate_xc(self):
+        """
+        Generate the time series xc from the binary c.
+        """
 
-    bias = 0.1   # chance of moving in biased direction (dependent on y)
+        num_walks = 10
+        num_timepoints = 50
+        xc = torch.zeros(num_walks, num_timepoints)
+        dims = xc.shape
+        dims = xc.shape
 
-    for i in range(dims[0]):
-        for j in range(1, dims[1]):
-            if random.random() < bias:
-                if y == 0:   # biased down if y = 0
-                        xc[i,j] = xc[i,j-1] + torch.normal(mean=-1, std=1, size=(1,)).item()
-                elif y == 1:   # biased up if y = 1
-                    xc[i,j] = xc[i,j-1] + torch.normal(mean=1, std=1, size=(1,)).item()
-            else:
-                    xc[i,j] = xc[i,j-1] + torch.normal(mean=0, std=1, size=(1,)).item()
+        # initialize walks to random start val
+        for i in range(dims[0]):
+            xc[i,0] = random.random()
 
-    # check how many walks ended in biased direction; adjust bias as needed
-    # want to choose bias s.t. most walks are biased with some exceptions
-    # num_biased = 0
-    # for i in range(dims[0]):
-    #      if y == 0 and xc[i,0] > xc[i,num_timepoints-1]:
-    #             num_biased += 1
-    #      elif y == 1 and xc[i,0] < xc[i,num_timepoints-1]:
-    #             num_biased += 1
-    # print(f'{num_biased} out of {num_walks} walks')
+        # choose probability of moving in biased direction
+        bias = 0.1
 
-    return xc
+        # generate biased random walks with direction dependent on y
+        for i in range(dims[0]):
+            for j in range(1, dims[1]):
+                if random.random() < bias:
+                    # biased downward if y = 0
+                    if self.y == 0:
+                            xc[i,j] = xc[i,j-1] + torch.normal(mean=-1, std=1, size=(1,)).item()
+                    # biased upward if y = 1
+                    else:
+                        xc[i,j] = xc[i,j-1] + torch.normal(mean=1, std=1, size=(1,)).item()
+                else:
 
-# %%
-print(generate_xc(1))
+                        xc[i,j] = xc[i,j-1] + torch.normal(mean=0, std=1, size=(1,)).item()
+
+        return xc
