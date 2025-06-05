@@ -1,0 +1,103 @@
+import torch
+import random
+from torch.utils.data import Dataset
+
+
+class ToyModel(Dataset):
+    # TODO: add "sampling" for y
+    def __init__(self, y):
+        self.y = y
+        self.xs = [
+            self.generate_xa(),   # xa, a 32 x 32 RGB image
+            self.generate_xb(),          # xb, a probability distribution of 10 classifications
+            self.generate_xc(),      # xc, a time series of 10 walks and 50 timepoints
+            ]
+    
+    def __len__(self):
+        return len(self.xs)
+
+    def __getitem__(self, idx):
+        return self.xs[idx]
+    
+    def generate_xa(self):
+        """
+        Generate the image xa from the binary y.
+        """
+        num_components = 3   # RGB
+        height = 32
+        width = 32
+        xa = torch.zeros(num_components, height, width)
+        dims = xa.shape
+
+        # color xa by sampling from different normal distributions
+        for i in range(dims[0]):
+            for j in range(dims[1]):
+                for k in range(dims[2]):
+                    # sample R vals from irrelevant (independent from y) normal distribution
+                    if i == 0:
+                        xa[i,j,k] = torch.normal(mean=0, std=1, size=(1,)).item()
+                    # sample G vals from relevant (dependent on y), low variance normal distribution
+                    elif i == 1:
+                        xa[i,j,k] = torch.normal(mean=self.y, std=0.1, size=(1,)).item()
+                    # sample B vals from relevant, high variance normal distribution
+                    else:
+                        xa[i,j,k] = torch.normal(mean=self.y, std=10, size=(1,)).item()
+
+        return xa      
+
+    def generate_xb(self):
+        """
+        Generate the bar chart probabilities xb from the binary y.
+        """
+        num_classes = 10
+        xb = torch.zeros(num_classes)
+
+        # assign random val to each classification
+        for i in range(xb.size(dim=0)):
+            xb[i] = random.random()
+
+        # convert vals to probability distribution
+        xb = xb.softmax(dim=0)
+
+        # sort in ascending order if y = 0, descending order if y = 1
+        dec = False
+        if self.y == 1:
+            dec = True
+
+        xb = torch.sort(xb, descending=dec)[0]
+
+        return xb
+
+    def generate_xc(self):
+        """
+        Generate the time series xc from the binary c.
+        """
+
+        num_walks = 10
+        num_timepoints = 50
+        xc = torch.zeros(num_walks, num_timepoints)
+        dims = xc.shape
+        dims = xc.shape
+
+        # initialize walks to random start val
+        for i in range(dims[0]):
+            xc[i,0] = random.random()
+
+        # choose probability of moving in biased direction
+        bias = 0.1
+
+        # generate biased random walks with direction dependent on y
+        for i in range(dims[0]):
+            for j in range(1, dims[1]):
+                if random.random() < bias:
+                    # biased downward if y = 0
+                    if self.y == 0:
+                            xc[i,j] = xc[i,j-1] + torch.normal(mean=-1, std=1, size=(1,)).item()
+                    # biased upward if y = 1
+                    else:
+                        xc[i,j] = xc[i,j-1] + torch.normal(mean=1, std=1, size=(1,)).item()
+                else:
+
+                        xc[i,j] = xc[i,j-1] + torch.normal(mean=0, std=1, size=(1,)).item()
+
+        return xc
