@@ -17,7 +17,8 @@ authors = [
     { email = "adjavond@hhmi.org", name = "Diane Adjavon" }
 ]
 dynamic = ["version"]
-dependencies = ["ipykernel>=6.29.5,<7", "torch>=2.7.0,<3", "numpy>=2.2.6,<3"]
+dependencies = ["ipykernel>=6.29.5,<7", "torch>=2.7.0,<3", "numpy>=2.2.6,<3", "pytest>=8.4.0,<9"]
+
 [tool.pixi.workspace]
 channels = ["conda-forge"]
 platforms = ["osx-arm64"]
@@ -26,3 +27,6 @@ platforms = ["osx-arm64"]
 zspace = { path = ".", editable = true }
 
 [tool.pixi.tasks]
+
+[tool.pixi.project]
+platforms = []
