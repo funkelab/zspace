@@ -7,13 +7,15 @@ from torch.utils.data import Dataset
 
 # %%
 class ToyModel(Dataset):
-    def __init__(self, y):
-        self.y = y
-        self.xs = [
-            self.generate_xa(),   # xa, a 32 x 32 RGB image
-            self.generate_xb(),          # xb, a probability distribution of 10 classifications
-            self.generate_xc(),      # xc, a time series of 10 walks and 50 timepoints
-            ]
+    def __init__(self, num_samples=100):
+        self.num_samples = num_samples
+        self.samples = []
+        
+        for i in range(num_samples):
+            y = torch.randint(0, 2, (1,)).item()
+            self.samples.append([self.generate_xa(y), 
+                                 self.generate_xb(y), 
+                                 self.generate_xc(y)])
     
     def __len__(self):
         return len(self.xs)
@@ -21,11 +23,11 @@ class ToyModel(Dataset):
     def __getitem__(self, idx):
         return self.xs[idx]
     
-    def generate_xa(self):
+    def generate_xa(self, y):
         """
         Generate the image xa from the binary y.
         """
-        num_components = 3   # RGB
+        num_components = 3
         height = 32
         width = 32
         xa = torch.zeros(num_components, height, width)
@@ -40,14 +42,14 @@ class ToyModel(Dataset):
                         xa[i,j,k] = torch.normal(mean=0, std=1, size=(1,)).item()
                     # sample G vals from relevant (dependent on y), low variance normal distribution
                     elif i == 1:
-                        xa[i,j,k] = torch.normal(mean=self.y, std=0.1, size=(1,)).item()
+                        xa[i,j,k] = torch.normal(mean=y, std=0.1, size=(1,)).item()
                     # sample B vals from relevant, high variance normal distribution
                     else:
-                        xa[i,j,k] = torch.normal(mean=self.y, std=10, size=(1,)).item()
+                        xa[i,j,k] = torch.normal(mean=y, std=10, size=(1,)).item()
 
         return xa      
 
-    def generate_xb(self):
+    def generate_xb(self, y):
         """
         Generate the bar chart probabilities xb from the binary y.
         """
@@ -63,14 +65,14 @@ class ToyModel(Dataset):
 
         # sort in ascending order if y = 0, descending order if y = 1
         dec = False
-        if self.y == 1:
+        if y == 1:
             dec = True
 
         xb = torch.sort(xb, descending=dec)[0]
 
         return xb
 
-    def generate_xc(self):
+    def generate_xc(self, y):
         """
         Generate the time series xc from the binary c.
         """
@@ -93,7 +95,7 @@ class ToyModel(Dataset):
             for j in range(1, dims[1]):
                 if random.random() < bias:
                     # biased downward if y = 0
-                    if self.y == 0:
+                    if y == 0:
                             xc[i,j] = xc[i,j-1] + torch.normal(mean=-1, std=1, size=(1,)).item()
                     # biased upward if y = 1
                     else:
@@ -103,3 +105,7 @@ class ToyModel(Dataset):
                         xc[i,j] = xc[i,j-1] + torch.normal(mean=0, std=1, size=(1,)).item()
 
         return xc
+    
+# %%
+test_model = ToyModel()
+test_model.__getitem
