@@ -4,6 +4,7 @@ import torch
 import numpy
 import random
 from torch.utils.data import Dataset
+from torch.utils.data import DataLoader
 
 # %%
 class ToyModel(Dataset):
@@ -105,3 +106,9 @@ class ToyModel(Dataset):
                         xc[i,j] = xc[i,j-1] + torch.normal(mean=0, std=1, size=(1,)).item()
 
         return xc
+
+# %%
+test_model = ToyModel()
+test_loader = DataLoader(test_model, batch_size=10)
+for sample in test_loader:
+    print(sample)
