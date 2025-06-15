@@ -108,7 +108,9 @@ class ToyModel(Dataset):
         return xc
 
 # %%
-test_model = ToyModel()
-test_loader = DataLoader(test_model, batch_size=10)
-for sample in test_loader:
-    print(sample)
+# test_model = ToyModel()
+# test_loader = DataLoader(test_model, batch_size=10)
+# for sample in test_loader:
+#     print(sample)
+
+# %%

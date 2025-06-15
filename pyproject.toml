@@ -27,3 +27,6 @@ platforms = ["osx-arm64"]
 zspace = { path = ".", editable = true }
 
 [tool.pixi.tasks]
+
+[tool.pixi.dependencies]
+tqdm = ">=4.67.1,<5"
