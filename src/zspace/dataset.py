@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 
 # %%
 class ToyModel(Dataset):
-    def __init__(self, num_samples=100):
+    def __init__(self, num_samples=50):
         self.num_samples = num_samples
         self.samples = []
         
@@ -110,7 +110,7 @@ class ToyModel(Dataset):
 # %%
 # test_model = ToyModel()
 # test_loader = DataLoader(test_model, batch_size=10)
-# for sample in test_loader:
-#     print(sample)
+# for batch in test_loader:
+#     print(batch)
 
 # %%

@@ -31,7 +31,7 @@ kwargs = {'num_workers': 1, 'pin_memory': True}
 train_dataset = ToyModel()
 test_dataset = ToyModel()
 
-train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, **kwargs)
+train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True, **kwargs)
 test_loader = DataLoader(dataset=test_dataset, batch_size=batch_size, shuffle=False, **kwargs)
 
 # %%
@@ -49,6 +49,10 @@ class Encoder(nn.Module):
         self.LeakyReLU = nn.LeakyReLU(0.2)
 
         self.training = True
+
+    def get_xa(self, x):
+        # to-do: extract xa, reshape
+        return 0
 
     def forward(self, x):
         h = self.LeakyReLU(self.fc_input1(x))
@@ -123,9 +127,16 @@ model_xa.train()
 
 for epoch in range(epochs):
     overall_loss = 0
-    for batch_idx, (x, _, _) in enumerate(train_loader):
-        xa = x.view(batch_size, -1)
+
+    for batch_idx, batch in enumerate(train_loader):
+        xa = batch[0] # batch shape: [100, 3, 32, 32]
+        xa = torch.flatten(xa, start_dim=1, end_dim=-1)
         xa = xa.to(device)
+
+        # if epoch == 0 and batch_idx == 0:  # only inspect the first batch once
+        #     print("Sample shape: ", xa.shape)
+        #     print("Sample type: ", type(xa))
+        #     print("xa shape: ", xa.shape)
 
         optimizer_xa.zero_grad()
 
@@ -135,6 +146,8 @@ for epoch in range(epochs):
         overall_loss += loss.item()
 
         loss.backward()
+
+        optimizer_xa.step()
         
     print("\tEpoch", epoch + 1, "complete!", "\tAverage loss: ", overall_loss / ((batch_idx + 1) * batch_size))
 
