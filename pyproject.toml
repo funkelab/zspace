@@ -30,3 +30,5 @@ zspace = { path = ".", editable = true }
 
 [tool.pixi.dependencies]
 tqdm = ">=4.67.1,<5"
+python = ">=3.13.5,<3.14"
+matplotlib = ">=3.10.3,<4"

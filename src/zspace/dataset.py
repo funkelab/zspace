@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 
 # %%
 class ToyModel(Dataset):
-    def __init__(self, num_samples=50):
+    def __init__(self, num_samples=10000, seed=0):
         self.num_samples = num_samples
         self.samples = []
         
