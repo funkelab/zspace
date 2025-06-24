@@ -1,8 +1,10 @@
 # %%
 import zspace
-import torch
 import numpy
 import random
+
+# %%
+import torch
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 
@@ -29,8 +31,8 @@ class ToyModel(Dataset):
         Generate the image xa from the binary y.
         """
         num_components = 3
-        height = 32
-        width = 32
+        height = 1
+        width = 1
         xa = torch.zeros(num_components, height, width)
         dims = xa.shape
 
