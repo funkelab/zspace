@@ -6,6 +6,7 @@ import numpy
 import zspace
 import torch
 from torch import nn
+import torch.nn.functional as F
 
 # %%
 class Encoder(nn.Module):
@@ -15,7 +16,7 @@ class Encoder(nn.Module):
         self.fc_input1 = nn.Linear(input_dim, hidden_dim)
         self.fc_input2 = nn.Linear(hidden_dim, hidden_dim)
         self.fc_mean = nn.Linear(hidden_dim, latent_dim)
-        self.fc_var = nn.Linear(hidden_dim, latent_dim)
+        self.fc_logvar = nn.Linear(hidden_dim, latent_dim)
 
         self.LeakyReLU = nn.LeakyReLU(0.2)
 
@@ -25,12 +26,12 @@ class Encoder(nn.Module):
         h = self.LeakyReLU(self.fc_input1(x))
         h = self.LeakyReLU(self.fc_input2(h))
         mean = self.fc_mean(h)
-        log_var = self.fc_var(h)
+        log_var = self.fc_logvar(h)
 
         return mean, log_var
     
 class Decoder(nn.Module):
-    def __init__(self, latent_dim, hidden_dim, output_dim):
+    def __init__(self, var, latent_dim, hidden_dim, output_dim):
         super(Decoder, self).__init__()
         self.fc_hidden1 = nn.Linear(latent_dim, hidden_dim)
         self.fc_hidden2 = nn.Linear(hidden_dim, hidden_dim)
@@ -38,13 +39,18 @@ class Decoder(nn.Module):
 
         self.LeakyReLU = nn.LeakyReLU(0.2)
 
+        self.var = var
+
     def forward(self, x):
         h = self.LeakyReLU(self.fc_hidden1(x))
         h = self.LeakyReLU(self.fc_hidden2(h))
 
-        xa_hat = self.fc_output(h)
+        x_hat = self.fc_output(h)
 
-        return xa_hat
+        if self.var == "xb":
+            x_hat = F.softmax(x_hat, dim=1)
+
+        return x_hat
     
 class Model(nn.Module):
     def __init__(self, Encoder, Decoder, device, seed=None):
@@ -59,7 +65,6 @@ class Model(nn.Module):
 
     def reparameterize(self, mean, log_var):
         std = torch.exp(0.5 * log_var)
-        # eps = torch.randn_like(std, generator=self.generator).to(self.device)
         eps = torch.randn(std.shape, generator=self.generator, device=self.device)
         z = mean + std * eps
         return z

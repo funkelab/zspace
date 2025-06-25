@@ -15,11 +15,29 @@ from zspace.model import Encoder, Decoder, Model
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using {device} device")
 
-batch_size = 64
+while True:
+    var = input("Enter xa, xb, or xc: ")
+    if var in ["xa", "xb", "xc"]:
+        break
+    else:
+        print("Invalid input; try again. ")
 
-input_dim = 3*1*1
+print("Training VAE on", var)
+
+if var == "xa":       # xa
+    input_dim = 3*1*1
+    batch_comp = 0
+elif var == "xb":     # xb
+    input_dim = 10
+    batch_comp = 1
+else:                 # xc
+    input_dim = 10*50
+    batch_comp = 2
+
 hidden_dim = 400
 latent_dim = 200
+
+batch_size = 64
 
 train_seed = 42
 test_seed = 24
@@ -48,10 +66,10 @@ test_loader = DataLoader(dataset=test_dataset, batch_size=batch_size, generator=
 # %%
 # create model
 
-encoder_xa = Encoder(input_dim=input_dim, hidden_dim=hidden_dim, latent_dim=latent_dim)
-decoder_xa = Decoder(latent_dim=latent_dim, hidden_dim=hidden_dim, output_dim=input_dim)
+encoder = Encoder(input_dim=input_dim, hidden_dim=hidden_dim, latent_dim=latent_dim)
+decoder = Decoder(var=var, latent_dim=latent_dim, hidden_dim=hidden_dim, output_dim=input_dim)
 
-model_xa = Model(Encoder=encoder_xa, Decoder=decoder_xa, device=device).to(device)
+model = Model(Encoder=encoder, Decoder=decoder, device=device).to(device)
 
 # %%
 # define loss function and optimizer
@@ -60,17 +78,19 @@ from torch.optim import Adam
 import torch.nn.functional as F
 
 def loss_fcn(x, x_hat, mean, log_var):
-    reprod_loss = F.mse_loss(x_hat, x, reduction='sum')
+    if var == "xb":
+        reconst_loss = F.cross_entropy(x_hat, x)
+    else:
+        reconst_loss = F.mse_loss(x_hat, x, reduction='mean')
     d_kl = -0.5 * torch.sum( 1 + log_var - mean.pow(2) - log_var.exp() )
 
-    return reprod_loss + d_kl
+    return reconst_loss + d_kl
 
-optimizer_xa = Adam(model_xa.parameters(), lr=lr)
+optimizer = Adam(model.parameters(), lr=lr)
 
-# %%
-def reprod_loss_fcn(x, x_hat):
-    reprod_loss = F.mse_loss(x_hat, x, reduction='sum')
-    return reprod_loss
+def reconst_loss_fcn(x, x_hat):
+    reconst_loss = F.mse_loss(x_hat, x, reduction='mean')
+    return reconst_loss
 
 def kl_loss_fcn(mean, log_var):
     d_kl = -0.5 * torch.sum( 1 + log_var - mean.pow(2) - log_var.exp() )   
@@ -85,60 +105,60 @@ import matplotlib.pyplot as plt
 train_losses = []
 test_losses = []
 
-reprod_losses = []
+reconst_losses = []
 kl_losses = []
 
 print("Start training VAE...")
-model_xa.train()
+model.train()
 
 for epoch in tqdm(range(epochs)):
     total_train_loss = 0
     total_test_loss = 0
 
-    total_reprod_loss = 0
+    total_reconst_loss = 0
     total_kl_loss = 0
 
     for batch_idx, batch in enumerate(train_loader):
-        xa = batch[0]   # batch[0] shape: [batch_size, 3, 32, 32]
-        xa = torch.flatten(xa, start_dim=1, end_dim=-1)
-        xa = xa.to(device)
+        x = batch[batch_comp] 
+        x = torch.flatten(x, start_dim=1, end_dim=-1)
+        x = x.to(device)
         
-        optimizer_xa.zero_grad()
+        optimizer.zero_grad()
 
-        xa_hat, mean, log_var = model_xa(xa)
-        loss = loss_fcn(xa, xa_hat, mean, log_var)
+        x_hat, mean, log_var = model(x)
+        loss = loss_fcn(x, x_hat, mean, log_var)
 
-        reprod_loss = reprod_loss_fcn(xa, xa_hat)
+        reconst_loss = reconst_loss_fcn(x, x_hat)
         kl_loss = kl_loss_fcn(mean, log_var)
         
         total_train_loss += loss.item()
 
-        total_reprod_loss += reprod_loss.item()
+        total_reconst_loss += reconst_loss.item()
         total_kl_loss += kl_loss.item()
 
         loss.backward()
-        optimizer_xa.step()
+        optimizer.step()
 
     train_losses.append( total_train_loss / ((batch_idx + 1) * batch_size) )
 
-    reprod_losses.append( total_reprod_loss / ((batch_idx + 1) * batch_size) )
+    reconst_losses.append( total_reconst_loss / ((batch_idx + 1) * batch_size) )
     kl_losses.append( total_kl_loss / ((batch_idx + 1) * batch_size) )
 
-    torch.save(model_xa.state_dict(), f"checkpoints/model_epoch_{epoch}.pt")
+    torch.save(model.state_dict(), f"checkpoints/model_epoch_{epoch}.pt")
 
     print("\tEpoch", epoch + 1, "complete!", 
           "\tAverage training loss: ", total_train_loss / ((batch_idx + 1) * batch_size))
 
-    model_xa.eval()
+    model.eval()
 
     with torch.no_grad():
         for batch in test_loader:
-            xa = batch[0]
-            xa = torch.flatten(xa, start_dim=1, end_dim=-1)
-            xa = xa.to(device)
+            x = batch[batch_comp]
+            x = torch.flatten(x, start_dim=1, end_dim=-1)
+            x = x.to(device)
 
-            xa_hat, mean, log_var = model_xa(xa)
-            loss = loss_fcn(xa, xa_hat, mean, log_var)
+            x_hat, mean, log_var = model(x)
+            loss = loss_fcn(x, x_hat, mean, log_var)
 
             total_test_loss += loss.item()
 
@@ -150,6 +170,7 @@ print("Finished!")
 
 # %%
 # plot losses
+
 fig, axs = plt.subplots(1, 3, figsize=(18,5))
 
 axs[0].plot(train_losses, label="Train loss")
@@ -158,7 +179,7 @@ axs[0].set_xlabel("Epoch")
 axs[0].set_ylabel("Loss")
 axs[0].legend()
 
-axs[1].plot(reprod_losses, color='green', label="Reproduction loss")
+axs[1].plot(reconst_losses, color='green', label="Reconstruction loss")
 axs[1].set_xlabel("Epoch")
 axs[1].set_ylabel("Loss")
 axs[1].legend()
@@ -168,23 +189,7 @@ axs[2].set_xlabel("Epoch")
 axs[2].set_ylabel("Loss")
 axs[2].legend()
 
-
 plt.tight_layout()
 plt.show()
 
-# %%# %%
-# examining the latent space 
-
-model_xa.load_state_dict(torch.load("model_epoch_5.pt"))
-model_xa.eval()
-model_xa.to(device)
-
-latents = []
-labels = []
-
-with torch.no_grad():
-    for x, y in train_loader:
-        x = x.to(device)
-
-# unfinished
 # %%
