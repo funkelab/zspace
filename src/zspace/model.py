@@ -47,8 +47,8 @@ class Decoder(nn.Module):
 
         x_hat = self.fc_output(h)
 
-        if self.var == "xb":
-            x_hat = F.softmax(x_hat, dim=1)
+        # if self.var == "xb":
+        #     x_hat = F.softmax(x_hat, dim=1)
 
         return x_hat
     

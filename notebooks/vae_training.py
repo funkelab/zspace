@@ -44,7 +44,7 @@ test_seed = 24
 
 lr = 1e-3
 
-epochs = 30
+epochs = 10
 
 # %%
 # load data
@@ -77,23 +77,28 @@ model = Model(Encoder=encoder, Decoder=decoder, device=device).to(device)
 from torch.optim import Adam
 import torch.nn.functional as F
 
-def loss_fcn(x, x_hat, mean, log_var):
+def loss_fcn(x, x_hat, mean, log_var, beta=0.2):
     if var == "xb":
         reconst_loss = F.cross_entropy(x_hat, x)
     else:
-        reconst_loss = F.mse_loss(x_hat, x, reduction='mean')
+        reconst_loss = F.mse_loss(x_hat, x, reduction='sum')
     d_kl = -0.5 * torch.sum( 1 + log_var - mean.pow(2) - log_var.exp() )
 
-    return reconst_loss + d_kl
+    return reconst_loss + beta * d_kl
 
 optimizer = Adam(model.parameters(), lr=lr)
 
 def reconst_loss_fcn(x, x_hat):
-    reconst_loss = F.mse_loss(x_hat, x, reduction='mean')
+    if var == "xb":
+        reconst_loss = F.cross_entropy(x_hat, x)
+    else:
+        reconst_loss = F.mse_loss(x_hat, x, reduction='sum')
+
     return reconst_loss
 
 def kl_loss_fcn(mean, log_var):
-    d_kl = -0.5 * torch.sum( 1 + log_var - mean.pow(2) - log_var.exp() )   
+    d_kl = -0.5 * torch.sum( 1 + log_var - mean.pow(2) - log_var.exp() ) 
+
     return d_kl
 
 # %%

@@ -57,22 +57,18 @@ class ToyModel(Dataset):
         Generate the bar chart probabilities xb from the binary y.
         """
         num_classes = 10
-        xb = torch.zeros(num_classes)
-
-        # assign random val to each classification
-        for i in range(xb.size(dim=0)):
-            xb[i] = random.random()
-
-        # convert vals to probability distribution
+        xb = torch.rand(num_classes)
         xb = xb.softmax(dim=0)
 
         # sort in ascending order if y = 0, descending order if y = 1
-        dec = False
-        if y == 1:
-            dec = True
+        xb = torch.sort(xb, descending=bool(y))[0]
 
-        xb = torch.sort(xb, descending=dec)[0]
-
+        # add noise
+        noise_level = 0.5
+        noise = noise_level * torch.randn(num_classes)
+        xb = xb + noise
+        xb = torch.clamp(xb, min=1e-6)   # prevent non-negative vals
+        xb = xb / xb.sum()   # re-normalize
         return xb
 
     def generate_xc(self, y):
