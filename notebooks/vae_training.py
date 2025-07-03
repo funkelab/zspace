@@ -16,35 +16,37 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using {device} device")
 
 while True:
-    var = input("Enter xa, xb, or xc: ")
-    if var in ["xa", "xb", "xc"]:
+    mod = input("Enter xa, xb, or xc: ")
+    if mod in ["xa", "xb", "xc"]:
         break
     else:
         print("Invalid input; try again. ")
 
-print("Training VAE on", var)
+print("Training VAE on", mod)
 
-if var == "xa":       # xa
-    input_dim = 3*1*1
+hidden_dim = 15
+latent_dim = 8
+
+if mod == "xa":       
+    input_dim = 3*2*2
     batch_comp = 0
-elif var == "xb":     # xb
+elif mod == "xb":    
     input_dim = 10
     batch_comp = 1
-else:                 # xc
+else:                
     input_dim = 10*50
     batch_comp = 2
-
-hidden_dim = 400
-latent_dim = 200
 
 batch_size = 64
 
 train_seed = 42
 test_seed = 24
 
+beta_loss = 1
+
 lr = 1e-3
 
-epochs = 10
+epochs = 30
 
 # %%
 # load data
@@ -67,9 +69,9 @@ test_loader = DataLoader(dataset=test_dataset, batch_size=batch_size, generator=
 # create model
 
 encoder = Encoder(input_dim=input_dim, hidden_dim=hidden_dim, latent_dim=latent_dim)
-decoder = Decoder(var=var, latent_dim=latent_dim, hidden_dim=hidden_dim, output_dim=input_dim)
+decoder = Decoder(mod=mod, latent_dim=latent_dim, hidden_dim=hidden_dim, output_dim=input_dim)
 
-model = Model(Encoder=encoder, Decoder=decoder, device=device).to(device)
+model = Model(encoder=encoder, decoder=decoder, device=device).to(device)
 
 # %%
 # define loss function and optimizer
@@ -77,29 +79,19 @@ model = Model(Encoder=encoder, Decoder=decoder, device=device).to(device)
 from torch.optim import Adam
 import torch.nn.functional as F
 
-def loss_fcn(x, x_hat, mean, log_var, beta=0.2):
-    if var == "xb":
-        reconst_loss = F.cross_entropy(x_hat, x)
-    else:
-        reconst_loss = F.mse_loss(x_hat, x, reduction='sum')
-    d_kl = -0.5 * torch.sum( 1 + log_var - mean.pow(2) - log_var.exp() )
-
-    return reconst_loss + beta * d_kl
-
 optimizer = Adam(model.parameters(), lr=lr)
 
-def reconst_loss_fcn(x, x_hat):
-    if var == "xb":
+def loss_fcn(x, x_hat, mod, mean, log_var, beta=1):
+    if mod == "xb":
         reconst_loss = F.cross_entropy(x_hat, x)
     else:
-        reconst_loss = F.mse_loss(x_hat, x, reduction='sum')
+       reconst_loss = F.mse_loss(x_hat, x, reduction='sum')
 
-    return reconst_loss
+    d_kl = -0.5 * torch.sum( 1 + log_var - mean.pow(2) - log_var.exp() )
 
-def kl_loss_fcn(mean, log_var):
-    d_kl = -0.5 * torch.sum( 1 + log_var - mean.pow(2) - log_var.exp() ) 
+    elbo = reconst_loss + beta * d_kl
 
-    return d_kl
+    return elbo, reconst_loss, d_kl
 
 # %%
 # train model
@@ -119,7 +111,7 @@ model.train()
 for epoch in tqdm(range(epochs)):
     total_train_loss = 0
     total_test_loss = 0
-
+    
     total_reconst_loss = 0
     total_kl_loss = 0
 
@@ -131,10 +123,7 @@ for epoch in tqdm(range(epochs)):
         optimizer.zero_grad()
 
         x_hat, mean, log_var = model(x)
-        loss = loss_fcn(x, x_hat, mean, log_var)
-
-        reconst_loss = reconst_loss_fcn(x, x_hat)
-        kl_loss = kl_loss_fcn(mean, log_var)
+        loss, reconst_loss, kl_loss = loss_fcn(x=x, x_hat=x_hat, mod=mod, mean=mean, log_var=log_var, beta=beta_loss)
         
         total_train_loss += loss.item()
 
@@ -149,7 +138,7 @@ for epoch in tqdm(range(epochs)):
     reconst_losses.append( total_reconst_loss / ((batch_idx + 1) * batch_size) )
     kl_losses.append( total_kl_loss / ((batch_idx + 1) * batch_size) )
 
-    torch.save(model.state_dict(), f"checkpoints/model_epoch_{epoch}.pt")
+    torch.save(model.state_dict(), f"checkpoints/model_epoch_{epoch + 1}.pt")
 
     print("\tEpoch", epoch + 1, "complete!", 
           "\tAverage training loss: ", total_train_loss / ((batch_idx + 1) * batch_size))
@@ -163,7 +152,7 @@ for epoch in tqdm(range(epochs)):
             x = x.to(device)
 
             x_hat, mean, log_var = model(x)
-            loss = loss_fcn(x, x_hat, mean, log_var)
+            loss, _, _ = loss_fcn(x, x_hat, mod=mod, mean=mean, log_var=log_var, beta=beta_loss)
 
             total_test_loss += loss.item()
 

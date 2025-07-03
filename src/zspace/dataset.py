@@ -31,8 +31,8 @@ class ToyModel(Dataset):
         Generate the image xa from the binary y.
         """
         num_components = 3
-        height = 1
-        width = 1
+        height = 2
+        width = 2
         xa = torch.zeros(num_components, height, width)
         dims = xa.shape
 
@@ -54,7 +54,7 @@ class ToyModel(Dataset):
 
     def generate_xb(self, y):
         """
-        Generate the bar chart probabilities xb from the binary y.
+        Generate the discrete probability distributions xb from the binary y.
         """
         num_classes = 10
         xb = torch.rand(num_classes)
@@ -64,9 +64,8 @@ class ToyModel(Dataset):
         xb = torch.sort(xb, descending=bool(y))[0]
 
         # add noise
-        noise_level = 0.5
-        noise = noise_level * torch.randn(num_classes)
-        xb = xb + noise
+        noise = 0.1
+        xb = xb + noise * torch.randn(num_classes)
         xb = torch.clamp(xb, min=1e-6)   # prevent non-negative vals
         xb = xb / xb.sum()   # re-normalize
         return xb
@@ -100,15 +99,30 @@ class ToyModel(Dataset):
                     else:
                         xc[i,j] = xc[i,j-1] + torch.normal(mean=1, std=1, size=(1,)).item()
                 else:
-
                         xc[i,j] = xc[i,j-1] + torch.normal(mean=0, std=1, size=(1,)).item()
 
         return xc
 
 # %%
+# plot xb
+
+# import matplotlib.pyplot as plt
+
 # test_model = ToyModel()
 # test_loader = DataLoader(test_model, batch_size=10)
-# for batch in test_loader:
-#     print(batch)
+
+# for batch_idx, batch in enumerate(test_loader):
+#     if batch_idx == 0:
+#         xbs = batch[1]
+
+# print(xbs)
+
+# idx = 0
+# probs = xbs[idx].numpy()
+
+# plt.figure()
+# plt.bar(range(len(probs)), probs)
+# plt.ylim(0, 1)
+# plt.show()
 
 # %%
