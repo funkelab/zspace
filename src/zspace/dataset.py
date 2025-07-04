@@ -64,7 +64,7 @@ class ToyModel(Dataset):
         xb = torch.sort(xb, descending=bool(y))[0]
 
         # add noise
-        noise = 0.1
+        noise = 0.02
         xb = xb + noise * torch.randn(num_classes)
         xb = torch.clamp(xb, min=1e-6)   # prevent non-negative vals
         xb = xb / xb.sum()   # re-normalize
@@ -86,7 +86,7 @@ class ToyModel(Dataset):
             xc[i,0] = random.random()
 
         # choose probability of moving in biased direction
-        bias = 0.1
+        bias = 0.3
 
         # generate biased random walks with direction dependent on y
         for i in range(dims[0]):

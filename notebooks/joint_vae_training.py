@@ -16,8 +16,10 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using {device} device")
 
 input_dims = [3*2*2, 10, 10*50]
-hidden_dim = 400   # can be specific to each encoder
-latent_dim = 256
+hidden_dim_xa = 256
+hidden_dim_xb = 256
+hidden_dim_xc = 1024
+latent_dim = 64
 
 batch_size = 64
 
@@ -28,7 +30,7 @@ beta_loss = 0.1
 
 lr = 1e-4
 
-epochs = 200
+num_epochs = 100
 
 # %%
 # load data
@@ -51,15 +53,15 @@ test_loader = DataLoader(dataset=test_dataset, batch_size=batch_size, generator=
 # create joint model
 
 encoders = {
-    "xa" : Encoder(input_dim=input_dims[0], hidden_dim=hidden_dim, latent_dim=latent_dim),
-    "xb" : Encoder(input_dim=input_dims[1], hidden_dim=hidden_dim, latent_dim=latent_dim),
-    "xc" : Encoder(input_dim=input_dims[2], hidden_dim=hidden_dim, latent_dim=latent_dim)
+    "xa" : Encoder(input_dim=input_dims[0], hidden_dim=hidden_dim_xa, latent_dim=latent_dim),
+    "xb" : Encoder(input_dim=input_dims[1], hidden_dim=hidden_dim_xb, latent_dim=latent_dim),
+    "xc" : Encoder(input_dim=input_dims[2], hidden_dim=hidden_dim_xc, latent_dim=latent_dim)
 }
 
 decoders = {
-    "xa" : Decoder(mod="xa", latent_dim=latent_dim, hidden_dim=hidden_dim, output_dim=input_dims[0]),
-    "xb" : Decoder(mod="xb", latent_dim=latent_dim, hidden_dim=hidden_dim, output_dim=input_dims[1]),
-    "xc" : Decoder(mod="xc", latent_dim=latent_dim, hidden_dim=hidden_dim, output_dim=input_dims[2])
+    "xa" : Decoder(mod="xa", latent_dim=latent_dim, hidden_dim=hidden_dim_xa, output_dim=input_dims[0]),
+    "xb" : Decoder(mod="xb", latent_dim=latent_dim, hidden_dim=hidden_dim_xb, output_dim=input_dims[1]),
+    "xc" : Decoder(mod="xc", latent_dim=latent_dim, hidden_dim=hidden_dim_xc, output_dim=input_dims[2])
 }
 
 model = JointModel(encoders=encoders, decoders=decoders, device=device).to(device)
@@ -87,6 +89,9 @@ def compute_loss(input_data, input_mod, target_data, target_mod):
     
     return loss_fcn(x=target_data, x_hat=x_hat, mod=target_mod, mean=mean, log_var=log_var)
 
+def kl_anneal(epoch, total_epochs, max_beta=1.0):
+    return min(max_beta, (epoch / total_epochs) * max_beta)
+
 # %%
 # train model
 
@@ -105,7 +110,7 @@ kl_losses = []
 print("Start training VAE...")
 model.train()
 
-for epoch in tqdm(range(epochs)):
+for epoch in tqdm(range(num_epochs)):
     total_train_loss = 0
     total_test_loss = 0
 
@@ -218,38 +223,104 @@ print("Finished!")
 # %%
 # plot losses
 
-fig, axs = plt.subplots(1, 5, figsize=(18,5))
+rows = 1
+columns = 5
+
+fig, axs = plt.subplots(rows, columns, figsize=(18,5))
 
 axs[0].plot(train_losses, label="Total training loss")
 axs[0].plot(test_losses, label="Total testing loss")
-axs[0].set_xlabel("Epoch")
-axs[0].set_ylabel("Loss")
 axs[0].set_title(f"Total loss (beta = {beta_loss})")
 axs[0].legend()
 
 axs[1].plot(reconst_losses, color='green', label="Reconstruction loss")
-axs[1].set_xlabel("Epoch")
-axs[1].set_ylabel("Loss")
 axs[1].set_title("Reconstruction training loss")
 
 axs[2].plot(kl_losses, color='purple', label="KL divergence loss")
-axs[2].set_xlabel("Epoch")
-axs[2].set_ylabel("Loss")
 axs[2].set_title("KL training loss")
 
 axs[3].plot(self_modal_losses, label="Self-modal loss")
-axs[3].set_xlabel("Epoch")
-axs[3].set_ylabel("Loss")
 axs[3].set_title("Self-modal training loss")
 
 axs[4].plot(cross_modal_losses, label="Cross-modal loss")
-axs[4].set_xlabel("Epoch")
-axs[4].set_ylabel("Loss")
 axs[4].set_title("Cross-modal training loss")
+
+for i in range(rows*columns):
+    axs[i].set_xlabel("Epoch")
+    axs[i].set_ylabel("Loss")
+    axs[i].set_xlim(0, min(num_epochs, 250))
 
 plt.tight_layout()
 plt.show()
+
+# %%
+# define reconstruction graph functions
+import matplotlib.pyplot as plt
+import torch
+
+def reconstruct(true_xs: dict[str, torch.Tensor], reconst_xs: dict[str, torch.Tensor], input: str):
+    fig, axs = plt.subplots(1, 3, figsize=(15, 4))
+    mods = ["xa", "xb", "xc"]
+
+    for i, mod in enumerate(mods):
+        x_true = true_xs[mod].cpu().detach()
+        x_hat = reconst_xs[mod].cpu().detach()
+
+        ax = axs[i]
+
+        if mod == "xa" or mod == "xb":
+            ax.bar(range(len(x_true)), x_true.numpy(), alpha=0.6, label="True")
+            ax.bar(range(len(x_hat)), x_hat.numpy(), alpha=0.6, label="Reconstructed")
+            ax.set_title(f"{mod} from {input}")
+            ax.legend()
+
+        elif mod == "xc":
+            ax.plot(x_true.numpy().T, label="True")
+            ax.plot(x_hat.numpy().T, label="Reconstructed")
+            ax.set_title(f"{mod} from {input}")
+            ax.legend()
+
+    plt.tight_layout()
+    plt.show()
+
 # %%
 # sample xas, xbs, xcs, and decode in all three modalities
-# plot latent space (umap)
+
+model.eval()
+
+batch = next(iter(test_loader))
+xa = batch[0]
+xb = batch[1]
+xc = batch[2]
+
+for i in range(batch_size):
+    xa_samp = xa[i].flatten().to(device)
+    xb_samp = xb[i].flatten().to(device)
+    xc_samp = xc[i].flatten().to(device)
+
+    true_xs = {
+        "xa" : xa_samp,
+        "xb" : xb_samp,
+        "xc" : xc_samp
+    }
+
+    with torch.no_grad():
+        # xa input
+        mean, log_var = model.encoders["xa"](xa_samp)
+        z = model.reparameterize(mean, log_var)
+
+        xa_hat = model.decoders["xa"](z)
+        xb_hat = model.decoders["xb"](z)
+        xc_hat = model.decoders["xc"](z)
+
+        reconst_xs = {
+            "xa" : xa_hat,
+            "xb" : xb_hat,
+            "xc" : xc_hat
+        }
+
+        reconstruct(true_xs, reconst_xs, "xa")
+
+
 # %%
+# plot latent space (umap)
