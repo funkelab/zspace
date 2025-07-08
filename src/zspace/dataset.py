@@ -13,9 +13,11 @@ class ToyModel(Dataset):
     def __init__(self, num_samples=10000, seed=0):
         self.num_samples = num_samples
         self.samples = []
+        self.labels = []
         
         for i in range(num_samples):
             y = torch.randint(0, 2, (1,)).item()
+            self.labels.append(y)
             self.samples.append([self.generate_xa(y), 
                                  self.generate_xb(y), 
                                  self.generate_xc(y)])
@@ -24,7 +26,9 @@ class ToyModel(Dataset):
         return len(self.samples)
 
     def __getitem__(self, idx):
-        return self.samples[idx]
+        xa, xb, xc = self.samples[idx]
+        y = self.labels[idx]
+        return xa, xb, xc, y
     
     def generate_xa(self, y):
         """
@@ -64,7 +68,7 @@ class ToyModel(Dataset):
         xb = torch.sort(xb, descending=bool(y))[0]
 
         # add noise
-        noise = 0.02
+        noise = 0.01
         xb = xb + noise * torch.randn(num_classes)
         xb = torch.clamp(xb, min=1e-6)   # prevent non-negative vals
         xb = xb / xb.sum()   # re-normalize
@@ -86,7 +90,7 @@ class ToyModel(Dataset):
             xc[i,0] = random.random()
 
         # choose probability of moving in biased direction
-        bias = 0.3
+        bias = 0.5
 
         # generate biased random walks with direction dependent on y
         for i in range(dims[0]):
@@ -104,25 +108,36 @@ class ToyModel(Dataset):
         return xc
 
 # %%
-# plot xb
+# plot
 
 # import matplotlib.pyplot as plt
 
 # test_model = ToyModel()
-# test_loader = DataLoader(test_model, batch_size=10)
+# test_loader = DataLoader(test_model, batch_size=64)
 
 # for batch_idx, batch in enumerate(test_loader):
 #     if batch_idx == 0:
 #         xbs = batch[1]
+#         xcs = batch[2]
+#         break
 
-# print(xbs)
+# for idx in range(xbs.shape[0]):
+#     xb = xbs[idx].numpy()
+#     xc = xcs[idx].numpy()  # shape: [10, 50]
 
-# idx = 0
-# probs = xbs[idx].numpy()
+#     fig, axs = plt.subplots(1, 2, figsize=(10, 4))
 
-# plt.figure()
-# plt.bar(range(len(probs)), probs)
-# plt.ylim(0, 1)
-# plt.show()
+#     axs[0].bar(range(len(xb)), xb)
+#     axs[0].set_ylim(0, 0.5)
+#     axs[0].set_title(f"xb - Sample {idx}")
+
+#     for channel in xc:
+#         axs[1].plot(channel)  # each channel is a time series of length 50
+#     axs[1].set_title("xc (10x50 Time Series)")
+#     axs[1].set_xlabel("Time")
+#     axs[1].set_ylabel("Value")
+
+#     plt.tight_layout()
+#     plt.show()
 
 # %%
