@@ -3,11 +3,13 @@ import numpy as np
 
 # %%
 import os
+
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
+
 from zspace.dataset import ToyModel
-from zspace.model import Encoder, Decoder, JointModel
+from zspace.vae_model import Encoder, Decoder, JointVAE
 
 # %%
 # model hyperparameters
@@ -15,7 +17,7 @@ from zspace.model import Encoder, Decoder, JointModel
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using {device} device")
 
-input_dims = [3*2*2, 10, 10*50]
+input_dims = [3*2*2, 10, 8*8]
 hidden_dim_xa = 256
 hidden_dim_xb = 256
 hidden_dim_xc = 1024
@@ -26,9 +28,9 @@ batch_size = 64
 train_seed = 42
 test_seed = 24
 
-beta_loss = 0.1
+beta_loss = 0.01
 
-lr = 1e-4
+lr = 1e-3
 
 num_epochs = 100
 
@@ -64,7 +66,7 @@ decoders = {
     "xc" : Decoder(mod="xc", latent_dim=latent_dim, hidden_dim=hidden_dim_xc, output_dim=input_dims[2])
 }
 
-model = JointModel(encoders=encoders, decoders=decoders, device=device).to(device)
+model = JointVAE(encoders=encoders, decoders=decoders, device=device).to(device)
 
 # %%
 # define loss function and optimizer
@@ -74,11 +76,8 @@ import torch.nn.functional as F
 
 optimizer = Adam(model.parameters(), lr=lr)
 
-def loss_fcn(x, x_hat, mod, mean, log_var):
-    if mod == "xb":
-        reconst_loss = F.cross_entropy(x_hat, x)
-    else:
-       reconst_loss = F.mse_loss(x_hat, x, reduction='mean')
+def loss_fcn(x, x_hat, mean, log_var):
+    reconst_loss = F.mse_loss(x_hat, x, reduction='mean')
 
     d_kl = -0.5 * torch.sum( 1 + log_var - mean.pow(2) - log_var.exp() )
 
@@ -87,7 +86,7 @@ def loss_fcn(x, x_hat, mod, mean, log_var):
 def compute_loss(input_data, input_mod, target_data, target_mod):
     x_hat, mean, log_var = model(x=input_data, input_mod=input_mod, target_mod=target_mod)
     
-    return loss_fcn(x=target_data, x_hat=x_hat, mod=target_mod, mean=mean, log_var=log_var)
+    return loss_fcn(x=target_data, x_hat=x_hat, mean=mean, log_var=log_var)
 
 def kl_anneal(epoch, total_epochs, max_beta=1.0):
     return min(max_beta, (epoch / total_epochs) * max_beta)
@@ -97,6 +96,11 @@ def kl_anneal(epoch, total_epochs, max_beta=1.0):
 
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+import pathlib
+
+output_path = pathlib.Path('notebook_outputs')
+model_name = f'vae_{hidden_dim_xa}_{hidden_dim_xb}_{hidden_dim_xc}_{latent_dim}_{num_epochs}'
+ckpt_file = output_path / f'model_{model_name}.pth'
 
 train_losses = []
 test_losses = []
@@ -108,7 +112,6 @@ reconst_losses = []
 kl_losses = []
 
 print("Start training VAE...")
-model.train()
 
 for epoch in tqdm(range(num_epochs)):
     total_train_loss = 0
@@ -119,6 +122,8 @@ for epoch in tqdm(range(num_epochs)):
 
     total_reconst_loss = 0 
     total_kl_loss = 0
+
+    model.train()
 
     for batch_idx, batch in enumerate(train_loader):
         xs = {
@@ -150,11 +155,11 @@ for epoch in tqdm(range(num_epochs)):
         reconst_xcb, _ = compute_loss(xc_sample, "xc", xb_sample, "xb")
         reconst_xcc, _ = compute_loss(xc_sample, "xc", xc_sample, "xc")
 
-        self_modal_loss = reconst_xaa + reconst_xbb + reconst_xcc
-        cross_modal_loss = reconst_xab + reconst_xac + reconst_xba + reconst_xbc + reconst_xca + reconst_xcb
+        self_modal_loss = (reconst_xaa + reconst_xbb + reconst_xcc)/3
+        cross_modal_loss = (reconst_xab + reconst_xac + reconst_xba + reconst_xbc + reconst_xca + reconst_xcb)/6
 
-        reconst_loss = (self_modal_loss + cross_modal_loss)/9
-        kl_loss = (kl_xa + kl_xb + kl_xc)/3
+        reconst_loss = self_modal_loss + cross_modal_loss
+        kl_loss = kl_xa + kl_xb + kl_xc
 
         loss = reconst_loss + beta_loss*kl_loss
 
@@ -172,9 +177,6 @@ for epoch in tqdm(range(num_epochs)):
     cross_modal_losses.append( total_cross_modal_loss / ((batch_idx + 1) * batch_size) )
     reconst_losses.append( total_reconst_loss / ((batch_idx + 1) * batch_size) )
     kl_losses.append( total_kl_loss / ((batch_idx + 1) * batch_size) )  
-
-    print("\tEpoch", epoch + 1, "complete!", 
-          "\tAverage training loss: ", total_train_loss / ((batch_idx + 1) * batch_size))
 
     model.eval()
 
@@ -207,11 +209,11 @@ for epoch in tqdm(range(num_epochs)):
             reconst_xcb, _ = compute_loss(xc_sample, "xc", xb_sample, "xb")
             reconst_xcc, _ = compute_loss(xc_sample, "xc", xc_sample, "xc")
 
-            self_modal_loss = reconst_xaa + reconst_xbb + reconst_xcc
-            cross_modal_loss = reconst_xab + reconst_xac + reconst_xba + reconst_xbc + reconst_xca + reconst_xcb
+            self_modal_loss = (reconst_xaa + reconst_xbb + reconst_xcc)/3
+            cross_modal_loss = (reconst_xab + reconst_xac + reconst_xba + reconst_xbc + reconst_xca + reconst_xcb)/6
 
-            reconst_loss = (self_modal_loss + cross_modal_loss)/9
-            kl_loss = (kl_xa + kl_xb + kl_xc)/3
+            reconst_loss = self_modal_loss + cross_modal_loss
+            kl_loss = kl_xa + kl_xb + kl_xc
 
             loss = reconst_loss + beta_loss*kl_loss
 
@@ -219,7 +221,11 @@ for epoch in tqdm(range(num_epochs)):
 
     test_losses.append( total_test_loss / ((batch_idx + 1) * batch_size) )
 
-    print("\tAverage testing loss: ", total_test_loss / ((batch_idx + 1) * batch_size))
+    tqdm.write(f"\tEpoch {epoch + 1} complete!")
+    tqdm.write(f"\tAverage training loss: {train_losses[epoch]}")
+    tqdm.write(f"\tAverage testing loss: {test_losses[epoch]}")
+    
+torch.save(model.state_dict(), ckpt_file)
 
 print("Finished!")
 

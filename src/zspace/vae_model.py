@@ -53,9 +53,9 @@ class Decoder(nn.Module):
         return x_hat
 
 # %%
-class Model(nn.Module):
+class VAE(nn.Module):
     def __init__(self, encoder:Encoder, decoder:Decoder, device:torch.device, seed=None):
-        super(Model, self).__init__()
+        super(VAE, self).__init__()
         self.encoder = encoder
         self.decoder = decoder
         self.device = device
@@ -79,9 +79,9 @@ class Model(nn.Module):
         return x_hat, mean, log_var
     
 # %%
-class JointModel(nn.Module):
+class JointVAE(nn.Module):
     def __init__(self, encoders:dict[str, nn.Module], decoders:dict[str, nn.Module], device:torch.device, seed=None):
-        super(JointModel, self).__init__()
+        super(JointVAE, self).__init__()
         self.encoders = nn.ModuleDict(encoders)
         self.decoders = nn.ModuleDict(decoders)
         self.device = device

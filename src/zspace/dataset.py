@@ -79,8 +79,8 @@ class ToyModel(Dataset):
         Generate the time series xc from the binary c.
         """
 
-        num_walks = 10
-        num_timepoints = 50
+        num_walks = 8
+        num_timepoints = 8
         xc = torch.zeros(num_walks, num_timepoints)
         dims = xc.shape
         dims = xc.shape
@@ -90,7 +90,7 @@ class ToyModel(Dataset):
             xc[i,0] = random.random()
 
         # choose probability of moving in biased direction
-        bias = 0.5
+        bias = 0.8
 
         # generate biased random walks with direction dependent on y
         for i in range(dims[0]):

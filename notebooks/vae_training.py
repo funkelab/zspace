@@ -7,7 +7,7 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 from zspace.dataset import ToyModel
-from zspace.model import Encoder, Decoder, Model
+from zspace.vae_model import Encoder, Decoder, VAE
  
 # %%
 # model hyperparameters
@@ -71,7 +71,7 @@ test_loader = DataLoader(dataset=test_dataset, batch_size=batch_size, generator=
 encoder = Encoder(input_dim=input_dim, hidden_dim=hidden_dim, latent_dim=latent_dim)
 decoder = Decoder(mod=mod, latent_dim=latent_dim, hidden_dim=hidden_dim, output_dim=input_dim)
 
-model = Model(encoder=encoder, decoder=decoder, device=device).to(device)
+model = VAE(encoder=encoder, decoder=decoder, device=device).to(device)
 
 # %%
 # define loss function and optimizer
