@@ -133,7 +133,9 @@ class MetaBlock(torch.nn.Module):
         expansion: int = 4,
         nvp: bool = True,
         num_classes: int = 0,
+        cond_dim: int = 0
     ):
+        # modified to handle any conditioning dimension
         super().__init__()
         self.proj_in = torch.nn.Linear(in_channels, channels)
         self.pos_embed = torch.nn.Parameter(torch.randn(num_patches, channels) * 1e-2)
@@ -141,6 +143,10 @@ class MetaBlock(torch.nn.Module):
             self.class_embed = torch.nn.Parameter(torch.randn(num_classes, 1, channels) * 1e-2)
         else:
             self.class_embed = None
+        if cond_dim > 0:
+            self.cond_proj = torch.nn.Linear(cond_dim, channels)
+        else:
+            self.cond_proj = None
         self.attn_blocks = torch.nn.ModuleList(
             [AttentionBlock(channels, head_dim, expansion) for _ in range(num_layers)]
         )
@@ -156,16 +162,30 @@ class MetaBlock(torch.nn.Module):
         pos_embed = self.permutation(self.pos_embed, dim=0)
         x_in = x
         x = self.proj_in(x) + pos_embed
-        if self.class_embed is not None:
-            if y is not None:
+        # if self.class_embed is not None:
+        #     if y is not None:
+        #         if (y < 0).any():
+        #             m = (y < 0).float().view(-1, 1, 1)
+        #             class_embed = (1 - m) * self.class_embed[y] + m * self.class_embed.mean(dim=0)
+        #         else:
+        #             class_embed = self.class_embed[y]
+        #         x = x + class_embed
+        #     else:
+        #         x = x + self.class_embed.mean(dim=0)
+
+        if y is not None:
+            if self.class_embed is not None and y.dtype in [torch.int, torch.long, torch.bool]:
                 if (y < 0).any():
                     m = (y < 0).float().view(-1, 1, 1)
                     class_embed = (1 - m) * self.class_embed[y] + m * self.class_embed.mean(dim=0)
                 else:
                     class_embed = self.class_embed[y]
                 x = x + class_embed
-            else:
-                x = x + self.class_embed.mean(dim=0)
+            elif self.cond_proj is not None and y.dtype in [torch.float, torch.double]:
+                cond_emb = self.cond_proj(y).unsqueeze(1)
+                x = x + cond_emb
+        elif self.class_embed is not None:
+            x = x + self.class_embed.mean(dim=0)
 
         for block in self.attn_blocks:
             x = block(x, self.attn_mask)
@@ -192,11 +212,22 @@ class MetaBlock(torch.nn.Module):
     ) -> tuple[torch.Tensor, torch.Tensor]:
         x_in = x[:, i : i + 1]  # get i-th patch but keep the sequence dimension
         x = self.proj_in(x_in) + pos_embed[i : i + 1]
-        if self.class_embed is not None:
-            if y is not None:
-                x = x + self.class_embed[y]
-            else:
-                x = x + self.class_embed.mean(dim=0)
+
+        # if self.class_embed is not None:
+        #     if y is not None:
+        #         x = x + self.class_embed[y]
+        #     else:
+        #         x = x + self.class_embed.mean(dim=0)
+
+        if y is not None:
+            if self.class_embed is not None and y.dtype in [torch.int, torch.long, torch.bool]:
+                class_embed = self.class_embed[y]
+                x = x + class_embed
+            elif self.cond_proj is not None and y.dtype in [torch.float, torch.double]:
+                cond_emb = self.cond_proj(y).unsqueeze(1) # shape : (batch, 1, channels)
+                x = x + cond_emb
+        elif self.class_embed is not None:
+            x = x + self.class_embed.mean(dim=0)
 
         for block in self.attn_blocks:
             x = block(x, attn_temp=attn_temp, which_cache=which_cache)  # here we use kv caching, so no attn_mask
@@ -262,6 +293,7 @@ class Model(torch.nn.Module):
         layers_per_block: int,
         nvp: bool = True,
         num_classes: int = 0,
+        cond_dim: int = 0
     ):
         super().__init__()
         self.img_size = img_size
@@ -280,6 +312,7 @@ class Model(torch.nn.Module):
                     layers_per_block,
                     nvp=nvp,
                     num_classes=num_classes,
+                    cond_dim=cond_dim
                 )
             )
         self.blocks = torch.nn.ModuleList(blocks)
@@ -336,3 +369,22 @@ class Model(torch.nn.Module):
             return x
         else:
             return seq
+        
+def get_tar_model(universal_config, tar_config, load_weights=False):
+    tar_model = Model(
+        in_channels=tar_config.in_channels,
+        img_size=tar_config.img_size,
+        patch_size=tar_config.patch_size,
+        channels=tar_config.channels,
+        num_blocks=tar_config.num_blocks,
+        layers_per_block=tar_config.layers_per_block,
+        nvp=tar_config.nvp,
+        num_classes=tar_config.num_classes
+    )
+
+    tar_model = tar_model.to(universal_config.device)
+
+    if load_weights:
+        tar_model.load_state_dict(torch.load(tar_config.ckpt_file))
+
+    return tar_model

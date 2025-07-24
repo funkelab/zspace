@@ -1,20 +1,16 @@
-# %%
-import zspace
-import numpy
 import random
-
-# %%
 import torch
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 
-# %%
 class ToyModel(Dataset):
-    def __init__(self, num_samples=10000, seed=0):
+    def __init__(self, num_samples=10000, seed=None):
         self.num_samples = num_samples
         self.samples = []
         self.labels = []
-        
+        if seed:
+            torch.manual_seed(seed)
+            
         for i in range(num_samples):
             y = torch.randint(0, 2, (1,)).item()
             self.labels.append(y)
@@ -106,38 +102,18 @@ class ToyModel(Dataset):
                         xc[i,j] = xc[i,j-1] + torch.normal(mean=0, std=1, size=(1,)).item()
 
         return xc
+    
+def get_train_dataset(universal_config):
+    return ToyModel(seed=universal_config.train_seed)
 
-# %%
-# plot
+def get_valid_dataset(universal_config):
+    return ToyModel(seed=universal_config.valid_seed)
 
-# import matplotlib.pyplot as plt
+def get_train_loader(universal_config):
+    train_gen = torch.Generator()
+    train_gen.manual_seed(universal_config.train_seed)
+    return DataLoader(dataset=get_train_dataset(universal_config), batch_size=universal_config.batch_size, generator=train_gen, shuffle=True)
 
-# test_model = ToyModel()
-# test_loader = DataLoader(test_model, batch_size=64)
+def get_valid_loader(universal_config):
+    return DataLoader(dataset=get_valid_dataset(universal_config), batch_size=universal_config.batch_size, shuffle=False)
 
-# for batch_idx, batch in enumerate(test_loader):
-#     if batch_idx == 0:
-#         xbs = batch[1]
-#         xcs = batch[2]
-#         break
-
-# for idx in range(xbs.shape[0]):
-#     xb = xbs[idx].numpy()
-#     xc = xcs[idx].numpy()  # shape: [10, 50]
-
-#     fig, axs = plt.subplots(1, 2, figsize=(10, 4))
-
-#     axs[0].bar(range(len(xb)), xb)
-#     axs[0].set_ylim(0, 0.5)
-#     axs[0].set_title(f"xb - Sample {idx}")
-
-#     for channel in xc:
-#         axs[1].plot(channel)  # each channel is a time series of length 50
-#     axs[1].set_title("xc (10x50 Time Series)")
-#     axs[1].set_xlabel("Time")
-#     axs[1].set_ylabel("Value")
-
-#     plt.tight_layout()
-#     plt.show()
-
-# %%
