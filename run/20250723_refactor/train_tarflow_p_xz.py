@@ -4,27 +4,26 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 from tqdm import tqdm
 
 from zspace.dataset import get_train_loader, get_valid_loader
-from zspace.tar_model import get_tar_model
+from zspace.tarflow_model import get_tarflow_model
 from zspace.vae_model import get_vae
-
-
 from config import UniversalConfig as ucon, TARFlowConfig as tcon, VAEConfig as vcon
 
-def compute_loss(tar_model, x, y):
-    z, outputs, logdets = tar_model(x, y)
-    loss = tar_model.get_loss(z, logdets)
+def compute_loss(tarflow_model, x, y):
+    z, outputs, logdets = tarflow_model(x, y)
+    loss = tarflow_model.get_loss(z, logdets)
     return loss, (z, outputs, logdets)
 
 if __name__ == "__main__":
     train_loader = get_train_loader(ucon)
     valid_loader = get_valid_loader(ucon)
 
-    vae_model = get_vae(ucon, vcon, load_weights=True)
+    vae_model = get_vae(ucon, vcon, ckpt_file=vcon.ckpt_file)
+    tarflow_model = get_tarflow_model(ucon, tcon)
 
-    tar_model = get_tar_model(ucon, tcon)
-
-    optimizer = torch.optim.AdamW(tar_model.parameters(), betas=(0.9, 0.95), lr=tcon.lr, weight_decay=tcon.weight_decay)
+    optimizer = torch.optim.AdamW(tarflow_model.parameters(), betas=(0.9, 0.95), lr=tcon.lr, weight_decay=tcon.weight_decay)
     lr_schedule = CosineAnnealingLR(optimizer, T_max=tcon.num_epochs, eta_min=1e-6)
+
+    ckpt_file = tcon.ckpt_file_p_xz
 
     train_losses = []
     valid_losses = []
@@ -33,7 +32,7 @@ if __name__ == "__main__":
         total_train_loss = 0
         total_valid_loss = 0
 
-        tar_model.train()
+        tarflow_model.train()
 
         for batch_idx, batch in enumerate(train_loader):
             xb = batch[1]
@@ -53,7 +52,7 @@ if __name__ == "__main__":
 
             optimizer.zero_grad()
 
-            loss, (z_t, outputs, logdets) = compute_loss(tar_model, xc, zb)
+            loss, (z_t, outputs, logdets) = compute_loss(tarflow_model, xc, zb)
             total_train_loss += loss.item()
 
             loss.backward()
@@ -62,7 +61,7 @@ if __name__ == "__main__":
 
         train_losses.append( total_train_loss / ((batch_idx + 1) * ucon.batch_size) )
 
-        tar_model.eval()
+        tarflow_model.eval()
 
         with torch.no_grad():
             for batch_idx, batch in enumerate(valid_loader):
@@ -75,15 +74,13 @@ if __name__ == "__main__":
                 y = y.to(ucon.device)
 
                 with torch.no_grad():
-                    mean, logvar = vae_model.encoders["xb"](xb)
-                    zb = vae_model.reparameterize(mean, logvar)
+                    zb, logvar = vae_model.encoders["xb"](xb)
+                    # zb = vae_model.reparameterize(zb, logvar)
                 
                 eps = tcon.noise_std * torch.randn_like(xc)
                 xc = xc + eps
 
-                optimizer.zero_grad()
-
-                loss, (z_t, outputs, logdets) = compute_loss(tar_model, xc, y)
+                loss, (z_t, outputs, logdets) = compute_loss(tarflow_model, xc, zb)
                 total_valid_loss += loss.item()
 
         valid_losses.append( total_valid_loss / ((batch_idx + 1) * ucon.batch_size) )
@@ -94,4 +91,4 @@ if __name__ == "__main__":
 
     print("training complete")
 
-    torch.save(tar_model.state_dict(), tcon.ckpt_file)
+    torch.save(tarflow_model.state_dict(), ckpt_file)

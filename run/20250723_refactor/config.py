@@ -1,4 +1,5 @@
 import torch
+import pathlib
 
 class UniversalConfig:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -41,14 +42,16 @@ class TARFlowConfig:
     nvp = True              # normalizing flow mode (non-volume preserving)
     num_classes = 2         # binary y
     channel_size = 1
-    epochs_tar = 100
     noise_std = 0.05
     drop_label = 0
     sample_freq = 10
+    cond_dim = UniversalConfig.z_dim
 
     num_epochs = 100
     lr = 1e-4
     weight_decay = 1e-4
 
-    model_name = f'tar_{patch_size}_{channels}_{num_blocks}_{layers_per_block}_{noise_std:.2f}'
-    ckpt_file = ExperimentConfig.output_path + f'/model_{model_name}.pth'
+    model_name_p_xy = "tarflow_p_xy"
+    model_name_p_xz = "tarflow_p_xz"
+    save_dir_p_xy = pathlib.Path(ExperimentConfig.output_path) / f"model_{model_name_p_xy}"
+    save_dir_p_xz = pathlib.Path(ExperimentConfig.output_path) / f"model_{model_name_p_xz}"

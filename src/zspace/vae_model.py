@@ -92,7 +92,7 @@ class JointVAE(nn.Module):
 
         return x_hat, mean, log_var
     
-def get_vae(universal_config, vae_config, load_weights=False):
+def get_vae(universal_config, vae_config, ckpt_file=None):
     input_dims = vae_config.input_dims
     hidden_dims = vae_config.hidden_dims
     latent_dim = vae_config.latent_dim
@@ -109,7 +109,7 @@ def get_vae(universal_config, vae_config, load_weights=False):
 
     vae_model = JointVAE(encoders=encoders, decoders=decoders, device=universal_config.device).to(universal_config.device)
 
-    if load_weights:
-        vae_model.load_state_dict(torch.load(vae_config.ckpt_file))
+    if ckpt_file:
+        vae_model.load_state_dict(torch.load(ckpt_file))
     
     return vae_model
