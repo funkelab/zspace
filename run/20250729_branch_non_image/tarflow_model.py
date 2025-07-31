@@ -1,24 +1,32 @@
-# adapted from https://github.com/apple/ml-tarflow/blob/main/transformer_flow.py
-
+#
+# For licensing see accompanying LICENSE file.
+# Copyright (C) 2024 Apple Inc. All Rights Reserved.
+#
 import torch
 
-class Permutation(torch.nn.Module):
 
+class Permutation(torch.nn.Module):
     def __init__(self, seq_length: int):
         super().__init__()
         self.seq_length = seq_length
 
-    def forward(self, x: torch.Tensor, dim: int = 1, inverse: bool = False) -> torch.Tensor:
-        raise NotImplementedError('Overload me')
+    def forward(
+        self, x: torch.Tensor, dim: int = 1, inverse: bool = False
+    ) -> torch.Tensor:
+        raise NotImplementedError("Overload me")
 
 
 class PermutationIdentity(Permutation):
-    def forward(self, x: torch.Tensor, dim: int = 1, inverse: bool = False) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor, dim: int = 1, inverse: bool = False
+    ) -> torch.Tensor:
         return x
 
 
 class PermutationFlip(Permutation):
-    def forward(self, x: torch.Tensor, dim: int = 1, inverse: bool = False) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor, dim: int = 1, inverse: bool = False
+    ) -> torch.Tensor:
         return x.flip(dims=[dim])
 
 
@@ -34,32 +42,49 @@ class Attention(torch.nn.Module):
         self.num_heads = in_channels // head_channels
         self.sqrt_scale = head_channels ** (-0.25)
         self.sample = False
-        self.k_cache: dict[str, list[torch.Tensor]] = {'cond': [], 'uncond': []}
-        self.v_cache: dict[str, list[torch.Tensor]] = {'cond': [], 'uncond': []}
+        self.k_cache: dict[str, list[torch.Tensor]] = {"cond": [], "uncond": []}
+        self.v_cache: dict[str, list[torch.Tensor]] = {"cond": [], "uncond": []}
 
     def forward_spda(
-        self, x: torch.Tensor, mask: torch.Tensor | None = None, temp: float = 1.0, which_cache: str = 'cond'
+        self,
+        x: torch.Tensor,
+        mask: torch.Tensor | None = None,
+        temp: float = 1.0,
+        which_cache: str = "cond",
     ) -> torch.Tensor:
         B, T, C = x.size()
         x = self.norm(x.float()).type(x.dtype)
-        q, k, v = self.qkv(x).reshape(B, T, 3 * self.num_heads, -1).transpose(1, 2).chunk(3, dim=1)  # (b, h, t, d)
+        q, k, v = (
+            self.qkv(x)
+            .reshape(B, T, 3 * self.num_heads, -1)
+            .transpose(1, 2)
+            .chunk(3, dim=1)
+        )  # (b, h, t, d)
 
         if self.sample:
             self.k_cache[which_cache].append(k)
             self.v_cache[which_cache].append(v)
-            k = torch.cat(self.k_cache[which_cache], dim=2)  # note that sequence dimension is now 2
+            k = torch.cat(
+                self.k_cache[which_cache], dim=2
+            )  # note that sequence dimension is now 2
             v = torch.cat(self.v_cache[which_cache], dim=2)
 
         scale = self.sqrt_scale**2 / temp
         if mask is not None:
             mask = mask.bool()
-        x = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=mask, scale=scale)
+        x = torch.nn.functional.scaled_dot_product_attention(
+            q, k, v, attn_mask=mask, scale=scale
+        )
         x = x.transpose(1, 2).reshape(B, T, C)
         x = self.proj(x)
         return x
 
     def forward_base(
-        self, x: torch.Tensor, mask: torch.Tensor | None = None, temp: float = 1.0, which_cache: str = 'cond'
+        self,
+        x: torch.Tensor,
+        mask: torch.Tensor | None = None,
+        temp: float = 1.0,
+        which_cache: str = "cond",
     ) -> torch.Tensor:
         B, T, C = x.size()
         x = self.norm(x.float()).type(x.dtype)
@@ -70,17 +95,24 @@ class Attention(torch.nn.Module):
             k = torch.cat(self.k_cache[which_cache], dim=1)
             v = torch.cat(self.v_cache[which_cache], dim=1)
 
-        attn = torch.einsum('bmhd,bnhd->bmnh', q * self.sqrt_scale, k * self.sqrt_scale) / temp
+        attn = (
+            torch.einsum("bmhd,bnhd->bmnh", q * self.sqrt_scale, k * self.sqrt_scale)
+            / temp
+        )
         if mask is not None:
-            attn = attn.masked_fill(mask.unsqueeze(-1) == 0, float('-inf'))
+            attn = attn.masked_fill(mask.unsqueeze(-1) == 0, float("-inf"))
         attn = attn.float().softmax(dim=-2).type(attn.dtype)
-        x = torch.einsum('bmnh,bnhd->bmhd', attn, v)
+        x = torch.einsum("bmnh,bnhd->bmhd", attn, v)
         x = x.reshape(B, T, C)
         x = self.proj(x)
         return x
 
     def forward(
-        self, x: torch.Tensor, mask: torch.Tensor | None = None, temp: float = 1.0, which_cache: str = 'cond'
+        self,
+        x: torch.Tensor,
+        mask: torch.Tensor | None = None,
+        temp: float = 1.0,
+        which_cache: str = "cond",
     ) -> torch.Tensor:
         if self.USE_SPDA:
             return self.forward_spda(x, mask, temp, which_cache)
@@ -108,73 +140,103 @@ class AttentionBlock(torch.nn.Module):
         self.mlp = MLP(channels, expansion)
 
     def forward(
-        self, x: torch.Tensor, attn_mask: torch.Tensor | None = None, attn_temp: float = 1.0, which_cache: str = 'cond'
+        self,
+        x: torch.Tensor,
+        attn_mask: torch.Tensor | None = None,
+        attn_temp: float = 1.0,
+        which_cache: str = "cond",
     ) -> torch.Tensor:
         x = x + self.attention(x, attn_mask, attn_temp, which_cache)
         x = x + self.mlp(x)
         return x
+
 
 class MetaBlock(torch.nn.Module):
     attn_mask: torch.Tensor
 
     def __init__(
         self,
-        in_channels: int,
-        channels: int,
-        num_patches: int,
+        num_tokens: int,
+        token_size: int,
+        projection_dims: int,
         permutation: Permutation,
         num_layers: int = 1,
         head_dim: int = 64,
         expansion: int = 4,
         nvp: bool = True,
         num_classes: int = 0,
-        cond_dim: int = 0
+        cond_dim: int = 0,
     ):
-        # modified to handle any conditioning dimension
         super().__init__()
-        self.proj_in = torch.nn.Linear(in_channels, channels)
-        self.pos_embed = torch.nn.Parameter(torch.randn(num_patches, channels) * 1e-2)
+
+        assert num_classes == 0 or cond_dim == 0, (
+            "Only one of num_classes or cond_dim can be non-zero."
+        )
+
+        self.can_have_y = num_classes > 0 or cond_dim > 0
+        self.continuous_y = cond_dim > 0
+
+        self.proj_in = torch.nn.Linear(token_size, projection_dims)
+        self.pos_embed = torch.nn.Parameter(
+            torch.randn(num_tokens, projection_dims) * 1e-2
+        )
+
         if num_classes:
-            self.class_embed = torch.nn.Parameter(torch.randn(num_classes, 1, channels) * 1e-2)
+            self.class_embed = torch.nn.Parameter(
+                torch.randn(num_classes, 1, projection_dims) * 1e-2
+            )
         else:
             self.class_embed = None
-        if cond_dim > 0:   # dimension of condition variable
-            self.cond_proj = torch.nn.Linear(cond_dim, channels)
-        else:
-            self.cond_proj = None
+
+        if self.continuous_y:
+            self.y_proj = torch.nn.Linear(cond_dim, projection_dims)
+
         self.attn_blocks = torch.nn.ModuleList(
-            [AttentionBlock(channels, head_dim, expansion) for _ in range(num_layers)]
+            [
+                AttentionBlock(projection_dims, head_dim, expansion)
+                for _ in range(num_layers)
+            ]
         )
         self.nvp = nvp
-        output_dim = in_channels * 2 if nvp else in_channels
-        self.proj_out = torch.nn.Linear(channels, output_dim)
+        output_dim = token_size * 2 if nvp else token_size
+        self.proj_out = torch.nn.Linear(projection_dims, output_dim)
         self.proj_out.weight.data.fill_(0.0)
         self.permutation = permutation
-        self.register_buffer('attn_mask', torch.tril(torch.ones(num_patches, num_patches)))
+        self.register_buffer(
+            "attn_mask", torch.tril(torch.ones(num_tokens, num_tokens))
+        )
 
-    def forward(self, x: torch.Tensor, y: torch.Tensor | None = None) -> tuple[torch.Tensor, torch.Tensor]:
+    def forward(
+        self, x: torch.Tensor, y: torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         x = self.permutation(x)
         pos_embed = self.permutation(self.pos_embed, dim=0)
         x_in = x
         x = self.proj_in(x) + pos_embed
 
-        if y is not None:
-            if self.class_embed is not None and y.dtype in [torch.int, torch.long, torch.bool]:   # 
-                if (y < 0).any():
-                    m = (y < 0).float().view(-1, 1, 1)
-                    class_embed = (1 - m) * self.class_embed[y] + m * self.class_embed.mean(dim=0)
+        if self.can_have_y:
+            if self.continuous_y:
+                # y           : (batch_size, cond_dim)
+                # y_proj(y)   : (batch_size, projection_dims)
+                # y_embedding : (batch_size, 1, projection_dims)
+                # x           : (batch_size, num_tokens, projection_dims)
+                y_embedding = self.y_proj(y).unsqueeze(1)
+                x = x + y_embedding
+            else:
+                if y is not None:
+                    if (y < 0).any():
+                        m = (y < 0).float().view(-1, 1, 1)
+                        class_embed = (1 - m) * self.class_embed[
+                            y
+                        ] + m * self.class_embed.mean(dim=0)
+                    else:
+                        class_embed = self.class_embed[y]
+                    x = x + class_embed
                 else:
-                    class_embed = self.class_embed[y]
-                x = x + class_embed
-            elif self.cond_proj is not None and y.dtype in [torch.float, torch.double]:
-                cond_embed = self.cond_proj(y).unsqueeze(1)
-                x = x + cond_embed
-        elif self.class_embed is not None:   # no condition variable
-            x = x + self.class_embed.mean(dim=0)
+                    x = x + self.class_embed.mean(dim=0)
 
         for block in self.attn_blocks:
             x = block(x, self.attn_mask)
-
         x = self.proj_out(x)
         x = torch.cat([torch.zeros_like(x[:, :1]), x[:, :-1]], dim=1)
 
@@ -194,23 +256,33 @@ class MetaBlock(torch.nn.Module):
         i: int,
         y: torch.Tensor | None = None,
         attn_temp: float = 1.0,
-        which_cache: str = 'cond',
+        which_cache: str = "cond",
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        x_in = x[:, i : i + 1]  # get i-th patch but keep the sequence dimension
+        # x   : (batch_size, num_tokens, token_size)
+        x_in = x[:, i : i + 1]  # get i-th token but keep the token size dimension
+        # x_in: (batch_size, 1, token_size)
         x = self.proj_in(x_in) + pos_embed[i : i + 1]
+        # x   : (batch_size, 1, projection_dims)
 
-        if y is not None:
-            if self.class_embed is not None and y.dtype in [torch.int, torch.long, torch.bool]:
-                class_embed = self.class_embed[y]
-                x = x + class_embed
-            elif self.cond_proj is not None and y.dtype in [torch.float, torch.double]:
-                cond_embed = self.cond_proj(y).unsqueeze(1) # shape : (batch, 1, channels)
-                x = x + cond_embed
-        elif self.class_embed is not None:
-            x = x + self.class_embed.mean(dim=0)
+        if self.can_have_y:
+            if self.continuous_y:
+                # y           : (batch_size, cond_dim)
+                # y_proj(y)   : (batch_size, projection_dims)
+                # y_embedding : (batch_size, 1, projection_dims)
+                # x           : (batch_size, 1, projection_dims)
+                y_embedding = self.y_proj(y).unsqueeze(1)
+                x = x + y_embedding
+            else:
+                if y is not None:
+                    x = x + self.class_embed[y]
+                else:
+                    x = x + self.class_embed.mean(dim=0)
 
         for block in self.attn_blocks:
-            x = block(x, attn_temp=attn_temp, which_cache=which_cache)  # here we use kv caching, so no attn_mask
+            x = block(
+                x, attn_temp=attn_temp, which_cache=which_cache
+            )  # here we use kv caching, so no attn_mask
+
         x = self.proj_out(x)
 
         if self.nvp:
@@ -218,21 +290,22 @@ class MetaBlock(torch.nn.Module):
         else:
             xb = x
             xa = torch.zeros_like(x)
+
         return xa, xb
 
     def set_sample_mode(self, flag: bool = True):
         for m in self.modules():
             if isinstance(m, Attention):
                 m.sample = flag
-                m.k_cache = {'cond': [], 'uncond': []}
-                m.v_cache = {'cond': [], 'uncond': []}
+                m.k_cache = {"cond": [], "uncond": []}
+                m.v_cache = {"cond": [], "uncond": []}
 
     def reverse(
         self,
         x: torch.Tensor,
         y: torch.Tensor | None = None,
         guidance: float = 0,
-        guide_what: str = 'ab',
+        guide_what: str = "ab",
         attn_temp: float = 1.0,
         annealed_guidance: bool = False,
     ) -> torch.Tensor:
@@ -241,19 +314,23 @@ class MetaBlock(torch.nn.Module):
         self.set_sample_mode(True)
         T = x.size(1)
         for i in range(x.size(1) - 1):
-            za, zb = self.reverse_step(x, pos_embed, i, y, which_cache='cond')
+            za, zb = self.reverse_step(x, pos_embed, i, y, which_cache="cond")
             if guidance > 0 and guide_what:
-                za_u, zb_u = self.reverse_step(x, pos_embed, i, None, attn_temp=attn_temp, which_cache='uncond')
+                za_u, zb_u = self.reverse_step(
+                    x, pos_embed, i, None, attn_temp=attn_temp, which_cache="uncond"
+                )
                 if annealed_guidance:
                     g = (i + 1) / (T - 1) * guidance
                 else:
                     g = guidance
-                if 'a' in guide_what:
+                if "a" in guide_what:
                     za = za + g * (za - za_u)
-                if 'b' in guide_what:
+                if "b" in guide_what:
                     zb = zb + g * (zb - zb_u)
 
-            scale = za[:, 0].float().exp().type(za.dtype)  # get rid of the sequence dimension
+            scale = (
+                za[:, 0].float().exp().type(za.dtype)
+            )  # get rid of the sequence dimension
             x[:, i + 1] = x[:, i + 1] * scale + zb[:, 0]
         self.set_sample_mode(False)
         return self.permutation(x, inverse=True)
@@ -265,54 +342,44 @@ class Model(torch.nn.Module):
 
     def __init__(
         self,
-        in_channels: int,
-        img_size: int,
-        patch_size: int,
-        channels: int,
+        num_tokens: int,
+        token_size: int,
+        projection_dims: int,
         num_blocks: int,
         layers_per_block: int,
         nvp: bool = True,
         num_classes: int = 0,
-        cond_dim: int = 0
+        cond_dim: int = 0,
     ):
         super().__init__()
-        self.img_size = img_size
-        self.patch_size = patch_size
-        self.num_patches = (img_size // patch_size) ** 2
-        permutations = [PermutationIdentity(self.num_patches), PermutationFlip(self.num_patches)]
+        self.num_tokens = num_tokens
+        self.token_size = token_size
+        permutations = [
+            PermutationIdentity(num_tokens),
+            PermutationFlip(num_tokens),
+        ]
 
         blocks = []
         for i in range(num_blocks):
             blocks.append(
                 MetaBlock(
-                    in_channels * patch_size**2,
-                    channels,
-                    self.num_patches,
+                    num_tokens,
+                    token_size,
+                    projection_dims,
                     permutations[i % 2],
                     layers_per_block,
                     nvp=nvp,
                     num_classes=num_classes,
-                    cond_dim=cond_dim
+                    cond_dim=cond_dim,
                 )
             )
         self.blocks = torch.nn.ModuleList(blocks)
         # prior for nvp mode should be all ones, but needs to be learnd for the vp mode
-        self.register_buffer('var', torch.ones(self.num_patches, in_channels * patch_size**2))
-
-    def patchify(self, x: torch.Tensor) -> torch.Tensor:
-        """Convert an image (N,C',H,W) to a sequence of patches (N,T,C')"""
-        u = torch.nn.functional.unfold(x, self.patch_size, stride=self.patch_size)
-        return u.transpose(1, 2)
-
-    def unpatchify(self, x: torch.Tensor) -> torch.Tensor:
-        """Convert a sequence of patches (N,T,C) to an image (N,C',H,W)"""
-        u = x.transpose(1, 2)
-        return torch.nn.functional.fold(u, (self.img_size, self.img_size), self.patch_size, stride=self.patch_size)
+        self.register_buffer("var", torch.ones(num_tokens, token_size))
 
     def forward(
         self, x: torch.Tensor, y: torch.Tensor | None = None
     ) -> tuple[torch.Tensor, list[torch.Tensor], torch.Tensor]:
-        x = self.patchify(x)
         outputs = []
         logdets = torch.zeros((), device=x.device)
         for block in self.blocks:
@@ -333,40 +400,37 @@ class Model(torch.nn.Module):
         x: torch.Tensor,
         y: torch.Tensor | None = None,
         guidance: float = 0,
-        guide_what: str = 'ab',
+        guide_what: str = "ab",
         attn_temp: float = 1.0,
         annealed_guidance: bool = False,
         return_sequence: bool = False,
     ) -> torch.Tensor | list[torch.Tensor]:
-        seq = [self.unpatchify(x)]
+        seq = [x]
         x = x * self.var.sqrt()
         for block in reversed(self.blocks):
             x = block.reverse(x, y, guidance, guide_what, attn_temp, annealed_guidance)
-            seq.append(self.unpatchify(x))
-        x = self.unpatchify(x)
+            seq.append(x)
 
         if not return_sequence:
             return x
         else:
             return seq
-        
-def get_tarflow_model(universal_config, tarflow_config, ckpt_file=None):
-    tar_model = Model(
-        in_channels=tarflow_config.in_channels,
-        img_size=tarflow_config.img_size,
-        patch_size=tarflow_config.patch_size,
-        channels=tarflow_config.channels,
-        num_blocks=tarflow_config.num_blocks,
-        layers_per_block=tarflow_config.layers_per_block,
-        nvp=tarflow_config.nvp,
-        num_classes=tarflow_config.num_classes,
-        cond_dim=tarflow_config.cond_dim
+
+def get_tarflow_model(config, input_dims, ckpt_file=None):
+    tarflow_model = Model(
+        num_tokens=input_dims,   # input data dimension
+        token_size=config.token_size,         
+        projection_dims=config.projection_dims,
+        num_blocks=config.num_blocks,
+        layers_per_block=config.layers_per_block,
+        nvp=config.nvp,
+        cond_dim=config.cond_dim,
     )
 
-    tar_model = tar_model.to(universal_config.device)
+    tarflow_model = tarflow_model.to(config.device)
 
     if ckpt_file:
-        tar_model.load_state_dict(torch.load(ckpt_file))
+        tarflow_model.load_state_dict(torch.load(ckpt_file))
         print(f"loaded weights from {ckpt_file}")
 
-    return tar_model
+    return tarflow_model
