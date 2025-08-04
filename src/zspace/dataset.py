@@ -104,16 +104,19 @@ class ToyModel(Dataset):
         return xc
     
 def get_train_dataset(universal_config):
-    return ToyModel(seed=universal_config.train_seed)
+    # return ToyModel(seed=universal_config.train_seed)
+    return ToyModel()
 
 def get_valid_dataset(universal_config):
-    return ToyModel(seed=universal_config.valid_seed)
+    # return ToyModel(seed=universal_config.valid_seed)
+    return ToyModel()
 
 def get_train_loader(universal_config):
-    train_gen = torch.Generator()
-    train_gen.manual_seed(universal_config.train_seed)
-    return DataLoader(dataset=get_train_dataset(universal_config), batch_size=universal_config.batch_size, generator=train_gen, shuffle=True)
+    # train_gen = torch.Generator()
+    # train_gen.manual_seed(universal_config.train_seed)
+    # return DataLoader(dataset=get_train_dataset(universal_config), batch_size=universal_config.batch_size, generator=train_gen, shuffle=True, drop_last=True)
+    return DataLoader(dataset=get_train_dataset(universal_config), batch_size=universal_config.batch_size, shuffle=True, drop_last=True)
 
 def get_valid_loader(universal_config):
-    return DataLoader(dataset=get_valid_dataset(universal_config), batch_size=universal_config.batch_size, shuffle=False)
+    return DataLoader(dataset=get_valid_dataset(universal_config), batch_size=universal_config.batch_size, shuffle=False, drop_last=True)
 

@@ -416,7 +416,7 @@ class Model(torch.nn.Module):
         else:
             return seq
 
-def get_tarflow_model(config, input_dims, ckpt_file=None):
+def get_tarflow_model(config, input_dims, num_classes=0, cond_dim=0, ckpt_file=None):
     tarflow_model = Model(
         num_tokens=input_dims,   # input data dimension
         token_size=config.token_size,         
@@ -424,7 +424,8 @@ def get_tarflow_model(config, input_dims, ckpt_file=None):
         num_blocks=config.num_blocks,
         layers_per_block=config.layers_per_block,
         nvp=config.nvp,
-        cond_dim=config.cond_dim,
+        num_classes=num_classes,
+        cond_dim=cond_dim,
     )
 
     tarflow_model = tarflow_model.to(config.device)

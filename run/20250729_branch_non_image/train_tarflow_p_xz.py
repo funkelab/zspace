@@ -13,7 +13,7 @@ if __name__ == "__main__":
     vae_model = get_vae(c, ckpt_file=u.get_ckpt_file(c.vae_model_name))
 
     input_dim = c.input_dims["xc"]   # learning p(xc|zb)
-    tarflow_model = get_tarflow_model(c, input_dim)
+    tarflow_model = get_tarflow_model(c, input_dim, cond_dim=c.cond_dim)
 
     train_dataset = get_train_dataset(c)
     valid_dataset = get_valid_dataset(c)
@@ -27,12 +27,12 @@ if __name__ == "__main__":
     ckpt_dir.mkdir(exist_ok=True, parents=True)
 
     optimizer = torch.optim.AdamW(tarflow_model.parameters(), betas=(0.9, 0.95), lr=c.lr, weight_decay=c.weight_decay)
-    lr_schedule = CosineAnnealingLR(optimizer, T_max=c.num_epochs, eta_min=1e-6)
+    lr_schedule = CosineAnnealingLR(optimizer, T_max=c.num_epochs_tarflow, eta_min=1e-6)
 
     train_losses = []
     valid_losses = []
 
-    for epoch in tqdm(range(c.num_epochs)):
+    for epoch in tqdm(range(c.num_epochs_tarflow)):
         total_train_loss = 0
         total_valid_loss = 0
 
@@ -49,7 +49,7 @@ if __name__ == "__main__":
 
                 with torch.no_grad():
                     y, logvar = vae_model.encoders["xb"](xb)       # shape : (batch_size, z_dim)
-                    y = vae_model.reparameterize(y, logvar)
+                    # y = vae_model.reparameterize(y, logvar)
 
                 eps = c.noise_std * torch.randn_like(xc)
                 xc = xc + eps
@@ -76,7 +76,7 @@ if __name__ == "__main__":
                     hidden_var = batch[3]                # shape : (batch_size)
 
                     xb = xb.to(c.device)
-                    xc = xc.view(xc.size(0), input_dim, c.token_size).to(c.device)   # shape : (batch_size, num_tokens, token_size)
+                    xc = xc.view(xc.size(0), input_dim, c.token_size)   # shape : (batch_size, num_tokens, token_size)
                     hidden_var = hidden_var.to(c.device)
 
                     with torch.no_grad():
@@ -85,6 +85,8 @@ if __name__ == "__main__":
 
                     eps = c.noise_std * torch.randn_like(xc)
                     xc = xc + eps
+                    xc = xc.to(c.device)
+                    y = y.to(c.device)
 
                     z, outputs, logdets = tarflow_model(xc, y)
                     loss = tarflow_model.get_loss(z, logdets)
@@ -97,10 +99,10 @@ if __name__ == "__main__":
         tqdm.write(f"\taverage training loss: {train_losses[epoch]}")
         tqdm.write(f"\taverage validation loss: {valid_losses[epoch]}")
 
-        if (epoch + 1) % c.sample_freq == 0 or epoch == 0 or epoch == 99:
+        if (epoch + 1) % c.sample_freq == 0 or epoch == 0 or epoch == (c.num_epochs_tarflow - 1):
             u.sample_p_xz(valid_dataset, vae_model, tarflow_model, sample_dir, epoch=epoch)
             torch.save(tarflow_model.state_dict(), ckpt_dir / f"{c.tarflow_p_xz_model_name}_epoch_{epoch}.pth")
-            tqdm.write(f"saved and sampled at epoch {epoch + 1}")
+            tqdm.write(f"saved and sampled at epoch {epoch}")
 
     print("training complete")
     u.plot_losses(train_losses, valid_losses, u.get_save_dir(c.tarflow_p_xz_model_name))
